@@ -1,0 +1,47 @@
+---
+- name: Ansible Minishift install for Fedora
+  hosts: localhost
+  become: true
+  become_user: root
+  tasks:
+  - name: Get current username
+    become: false
+    command: whoami
+    register: current_user
+  - name: DNF install libvirt qemu-kvm
+    dnf:
+       name: libvirt, qemu-kvm
+       state: present
+  - name: Add current {{ current_user }} user to libvirt group
+    user: name={{ current_user.stdout }}
+          group=libvirt
+          append=yes
+  - name: Update {{ current_user.stdout}} session to apply libvirt group
+    become: false
+    command: newgrp libvirt
+  - name: Enable virtlogd and libvirtd 
+    systemd:
+          enabled: yes
+          state: started
+          name: "{{ item }}"
+    with_items:
+          - virtlogd
+          - libvirtd       
+  - name: Download docker-machine-kvm driver binary 
+    get_url:
+          url: https://github.com/dhiltgen/docker-machine-kvm/releases/download/v0.7.0/docker-machine-driver-kvm
+          dest: /usr/local/bin/docker-machine-driver-kvm
+          mode: 0755
+  - name: Download and extract Minishift
+    unarchive:
+          remote_src: yes
+          src: https://github.com/minishift/minishift/releases/download/v1.31.0/minishift-1.31.0-linux-amd64.tgz
+          dest: ./
+          list_files: yes
+    register: archive_contents
+  - name: Copy minishift binary to local bin dir
+    command: mv {{ archive_contents.files[0] }}/minishift /usr/local/bin
+  - name: Remove extracted directory
+    file:
+          path: "{{ archive_contents.files[0] }}"
+          state: absent   
